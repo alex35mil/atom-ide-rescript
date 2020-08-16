@@ -1,6 +1,6 @@
 {
   "name": "ide-rescript",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "ReScript language support in Atom IDE",
   "repository": "https://github.com/alexfedoseev/atom-ide-rescript",
   "authors": [
