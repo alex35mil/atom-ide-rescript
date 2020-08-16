@@ -1,6 +1,6 @@
 # atom-ide-rescript
 
-[ReScript](https://rescript-lang.org) support in Atom IDE.
+[ReScript](https://rescript-lang.org) language support in Atom IDE.
 
 ## Installation
 Search for `ide-rescript` package in Atom, or via `apm`:
