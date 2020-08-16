@@ -1,0 +1,102 @@
+{
+	"name": "rescript-language-server",
+	"description": "The official ReScript language server",
+	"author": "chenglou",
+	"license": "MIT",
+	"version": "0.0.3",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/rescript-lang/rescript-language-server"
+	},
+	"publisher": "chenglou",
+	"categories": [],
+	"keywords": [
+		"rescript",
+		"language-server"
+	],
+	"engines": {
+		"vscode": "^1.43.0"
+	},
+	"activationEvents": [
+		"onLanguage:rescript"
+	],
+	"main": "./client/out/extension",
+	"contributes": {
+		"taskDefinitions_unused": [
+			{
+				"type": "bsb",
+				"required": [
+					"task"
+				],
+				"properties": {
+					"task": {
+						"type": "string",
+						"description": "The bsb task"
+					}
+				}
+			}
+		],
+		"configuration": {
+			"type": "object",
+			"title": "Example configuration",
+			"properties": {
+				"languageServerExample.maxNumberOfProblems": {
+					"scope": "resource",
+					"type": "number",
+					"default": 100,
+					"description": "Controls the maximum number of problems produced by the server."
+				},
+				"languageServerExample.trace.server": {
+					"scope": "window",
+					"type": "string",
+					"enum": [
+						"off",
+						"messages",
+						"verbose"
+					],
+					"default": "off",
+					"description": "Traces the communication between VS Code and the language server."
+				}
+			}
+		},
+		"grammars": [
+			{
+				"language": "rescript",
+				"scopeName": "source.rescript",
+				"path": "./rescript.json"
+			}
+		],
+		"languages": [
+			{
+				"id": "rescript",
+				"aliases": [
+					"ReScript"
+				],
+				"extensions": [
+					".res",
+					".resi"
+				],
+				"configuration": "./rescript.configuration.json"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -b",
+		"watch": "tsc -b -w",
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+		"test": "sh ./scripts/e2e.sh"
+	},
+	"devDependencies": {
+		"@types/mocha": "^7.0.2",
+		"mocha": "^8.0.1",
+		"@types/node": "^12.12.0",
+		"eslint": "^6.4.0",
+		"@typescript-eslint/parser": "^2.3.0",
+		"typescript": "^3.9.4"
+	},
+	"dependencies": {
+		"@types/tmp": "^0.2.0",
+		"tmp": "^0.2.1"
+	}
+}

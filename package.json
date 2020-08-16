@@ -1,0 +1,88 @@
+{
+  "name": "ide-rescript",
+  "version": "0.0.0",
+  "description": "ReScript support in Atom IDE",
+  "repository": "https://github.com/alexfedoseev/atom-ide-rescript",
+  "authors": [
+    "Alex Fedoseev <alex.fedoseev@gmail.com>"
+  ],
+  "license": "MIT",
+  "main": "lib/main.js",
+  "scripts": {
+    "vendor": "script/vendor",
+    "postinstall": "cd vendor && npm install --only=prod --ignore-scripts && cd server && npm install --only=prod"
+  },
+  "engines": {
+    "atom": ">=1.33.0"
+  },
+  "dependencies": {
+    "atom-languageclient": "0.9.9",
+    "atom-package-deps": "6.0.0",
+    "diff": "4.0.2"
+  },
+  "package-deps": [
+    "atom-ide-ui"
+  ],
+  "enhancedScopes": [
+    "source.rescript"
+  ],
+  "consumedServices": {
+    "linter-indie": {
+      "versions": {
+        "2.0.0": "consumeLinterV2"
+      }
+    },
+    "atom-ide-busy-signal": {
+      "versions": {
+        "0.1.0": "consumeBusySignal"
+      }
+    },
+    "datatip": {
+      "versions": {
+        "0.1.0": "consumeDatatip"
+      }
+    }
+  },
+  "providedServices": {
+    "autocomplete.provider": {
+      "versions": {
+        "2.0.0": "provideAutocomplete"
+      }
+    },
+    "code-format.range": {
+      "versions": {
+        "0.1.0": "provideRangeCodeFormat"
+      }
+    },
+    "code-format.onSave": {
+      "versions": {
+        "0.1.0": "provideOnSaveCodeFormat"
+      }
+    },
+    "code-highlight": {
+      "versions": {
+        "0.1.0": "provideCodeHighlight"
+      }
+    },
+    "definitions": {
+      "versions": {
+        "0.1.0": "provideDefinitions"
+      }
+    },
+    "find-references": {
+      "versions": {
+        "0.1.0": "provideFindReferences"
+      }
+    },
+    "outline-view": {
+      "versions": {
+        "0.1.0": "provideOutlines"
+      }
+    },
+    "code-actions": {
+      "versions": {
+        "0.1.0": "provideCodeActions"
+      }
+    }
+  }
+}

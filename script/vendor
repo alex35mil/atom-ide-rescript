@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -e
+
+[[ -d rescript-language-server ]] || git clone git@github.com:rescript-lang/rescript-language-server.git
+
+rm -rf vendor || true
+mkdir -p vendor/server
+
+cd rescript-language-server
+rm -rf server/out || true
+npm install
+npm run compile
+cp package.json ../vendor/
+cp package-lock.json ../vendor/
+cp server/package.json ../vendor/server/
+cp server/package-lock.json ../vendor/server/
+cp server/out/server.js ../vendor/server/
