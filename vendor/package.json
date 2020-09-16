@@ -1,14 +1,15 @@
 {
-	"name": "rescript-language-server",
-	"description": "The official ReScript language server",
+	"name": "rescript-vscode",
+	"description": "The official VSCode plugin for ReScript.",
 	"author": "chenglou",
 	"license": "MIT",
-	"version": "0.0.3",
+	"version": "0.0.8",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/rescript-lang/rescript-language-server"
+		"url": "https://github.com/rescript-lang/rescript-vscode"
 	},
-	"publisher": "chenglou",
+	"publisher": "chenglou92",
+	"icon": "logo.png",
 	"categories": [],
 	"keywords": [
 		"rescript",
@@ -63,7 +64,7 @@
 			{
 				"language": "rescript",
 				"scopeName": "source.rescript",
-				"path": "./rescript.json"
+				"path": "./grammars/rescript.tmLanguage.json"
 			}
 		],
 		"languages": [
@@ -97,6 +98,8 @@
 	},
 	"dependencies": {
 		"@types/tmp": "^0.2.0",
-		"tmp": "^0.2.1"
+		"chokidar": "^3.4.2",
+		"tmp": "^0.2.1",
+		"vscode-uri": "^2.1.2"
 	}
 }

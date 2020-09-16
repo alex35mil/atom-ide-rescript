@@ -28,227 +28,98 @@ const m = __importStar(require("vscode-jsonrpc/lib/messages"));
 const v = __importStar(require("vscode-languageserver"));
 const path = __importStar(require("path"));
 const fs_1 = __importDefault(require("fs"));
-const childProcess = __importStar(require("child_process"));
 const vscode_languageserver_protocol_1 = require("vscode-languageserver-protocol");
-const tmp = __importStar(require("tmp"));
-// See https://microsoft.github.io/language-server-protocol/specification Abstract Message
-// version is fixed to 2.0
-let jsonrpcVersion = '2.0';
-let bscPartialPath = path.join('node_modules', 'bs-platform', process_1.default.platform, 'bsc.exe');
-let bsbLogPartialPath = 'bsb.log';
-let resExt = '.res';
-let resiExt = '.resi';
+const vscode_uri_1 = require("vscode-uri");
+const utils = __importStar(require("./utils"));
+const c = __importStar(require("./constants"));
+const chokidar = __importStar(require("chokidar"));
 // https://microsoft.github.io/language-server-protocol/specification#initialize
 // According to the spec, there could be requests before the 'initialize' request. Link in comment tells how to handle them.
 let initialized = false;
 // https://microsoft.github.io/language-server-protocol/specification#exit
 let shutdownRequestAlreadyReceived = false;
-let diagnosisTimer = null;
 // congrats. A simple UI problem is now a distributed system problem
 let stupidFileContentCache = {};
-let findDirOfFileNearFile = (fileToFind, source) => {
-    let dir = path.dirname(source);
-    if (fs_1.default.existsSync(path.join(dir, fileToFind))) {
-        return dir;
-    }
-    else {
-        if (dir === source) {
-            // reached top
-            return null;
-        }
-        else {
-            return findDirOfFileNearFile(fileToFind, dir);
-        }
-    }
-};
-let formatUsingValidBscPath = (code, bscPath, isInterface) => {
-    // library cleans up after itself. No need to manually remove temp file
-    let tmpobj = tmp.fileSync();
-    let extension = isInterface ? resiExt : resExt;
-    let fileToFormat = tmpobj.name + extension;
-    fs_1.default.writeFileSync(fileToFormat, code, { encoding: 'utf-8' });
-    try {
-        let result = childProcess.execFileSync(bscPath, ['-color', 'never', '-format', fileToFormat], { stdio: 'pipe' });
-        return {
-            kind: 'success',
-            result: result.toString(),
-        };
-    }
-    catch (e) {
-        return {
-            kind: 'error',
-            error: e.message,
-        };
-    }
-};
-let parseBsbOutputLocation = (location) => {
-    // example bsb output location:
-    // 3:9
-    // 3:5-8
-    // 3:9-6:1
-    // language-server position is 0-based. Ours is 1-based. Don't forget to convert
-    // also, our end character is inclusive. Language-server's is exclusive
-    let isRange = location.indexOf('-') >= 0;
-    if (isRange) {
-        let [from, to] = location.split('-');
-        let [fromLine, fromChar] = from.split(':');
-        let isSingleLine = to.indexOf(':') >= 0;
-        let [toLine, toChar] = isSingleLine ? to.split(':') : [fromLine, to];
-        return {
-            start: { line: parseInt(fromLine) - 1, character: parseInt(fromChar) - 1 },
-            end: { line: parseInt(toLine) - 1, character: parseInt(toChar) },
-        };
-    }
-    else {
-        let [line, char] = location.split(':');
-        let start = { line: parseInt(line) - 1, character: parseInt(char) };
-        return {
-            start: start,
-            end: start,
-        };
-    }
-};
-let parseBsbLogOutput = (content) => {
-    /* example bsb.log file content:
-
-Cleaning... 6 files.
-Cleaning... 87 files.
-[1/5] [34mBuilding[39m [2msrc/TestFramework.reiast[22m
-[2/5] [34mBuilding[39m [2msrc/TestFramework.reast[22m
-[3/5] Building src/test.resast
-FAILED: src/test.resast
-/Users/chenglou/github/bucklescript/darwin/bsc.exe   -bs-jsx 3 -bs-no-version-header -o src/test.resast -bs-syntax-only -bs-binary-ast /Users/chenglou/github/reason-react/src/test.res
-
-  Syntax error!
-  /Users/chenglou/github/reason-react/src/test.res 1:8-2:3
-
-  1 │ let a =
-  2 │ let b =
-  3 │
-
-  This let-binding misses an expression
-
-[8/29] Building src/legacy/ReactDOMServerRe.reast
-FAILED: src/test.cmj src/test.cmi
-
-  Warning number 8
-  /Users/chenglou/github/reason-react/src/test.res 3:5-8
-
-  1 │ let a = j`😀`
-  2 │ let b = `😀`
-  3 │ let None = None
-  4 │ let bla: int = "
-  5 │   hi
-
-  You forgot to handle a possible case here, for example:
-  Some _
-
-  We've found a bug for you!
-  /Users/chenglou/github/reason-react/src/test.res 3:9
-
-  1 │ let a = 1
-  2 │ let b = "hi"
-  3 │ let a = b + 1
-
-  This has type:
-    string
-
-  But somewhere wanted:
-    int
-
-
-[15/62] [34mBuilding[39m [2msrc/ReactDOMServer.reast[22m
-    */
-    // we're gonna chop that
-    let res = [];
-    let lines = content.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
-        if (line.startsWith('  We\'ve found a bug for you!')) {
-            res.push([]);
-        }
-        else if (line.startsWith('  Warning number ')) {
-            res.push([]);
-        }
-        else if (line.startsWith('  Syntax error!')) {
-            res.push([]);
-        }
-        else if (/^  [0-9]+ /.test(line)) {
-            // code display. Swallow
-        }
-        else if (line.startsWith('  ')) {
-            res[res.length - 1].push(line);
-        }
-    }
-    // map of file path to list of diagnosis
-    let ret = {};
-    res.forEach(diagnosisLines => {
-        let [fileAndLocation, ...diagnosisMessage] = diagnosisLines;
-        let lastSpace = fileAndLocation.lastIndexOf(' ');
-        let file = fileAndLocation.substring(2, lastSpace);
-        let location = fileAndLocation.substring(lastSpace);
-        if (ret[file] == null) {
-            ret[file] = [];
-        }
-        let cleanedUpDiagnosis = diagnosisMessage
-            .map(line => {
-            // remove the spaces in front
-            return line.slice(2);
-        })
-            .join('\n')
-            // remove start and end whitespaces/newlines
-            .trim();
-        ret[file].push({
-            range: parseBsbOutputLocation(location),
-            message: cleanedUpDiagnosis,
+let previouslyDiagnosedFiles = new Set();
+let compilerLogPaths = new Set();
+let sendUpdatedDiagnostics = () => {
+    let diagnosedFiles = {};
+    compilerLogPaths.forEach(compilerLogPath => {
+        let content = fs_1.default.readFileSync(compilerLogPath, { encoding: 'utf-8' });
+        let filesAndErrors = utils.parseCompilerLogOutput(content, ":");
+        Object.keys(filesAndErrors).forEach(file => {
+            // assumption: there's no existing files[file] entry
+            // this is true; see the lines above. A file can only belong to one .compiler.log root
+            diagnosedFiles[file] = filesAndErrors[file];
         });
     });
-    return ret;
+    // Send new diagnostic, wipe old ones
+    let diagnosedFilePaths = Object.keys(diagnosedFiles);
+    diagnosedFilePaths.forEach(file => {
+        let params = {
+            uri: file,
+            // there's a new optional version param from https://github.com/microsoft/language-server-protocol/issues/201
+            // not using it for now, sigh
+            diagnostics: diagnosedFiles[file],
+        };
+        let notification = {
+            jsonrpc: c.jsonrpcVersion,
+            method: 'textDocument/publishDiagnostics',
+            params: params,
+        };
+        process_1.default.send(notification);
+        // this file's taken care of already now. Remove from old diagnostic files
+        previouslyDiagnosedFiles.delete(file);
+    });
+    // wipe the errors from the files that are no longer erroring
+    previouslyDiagnosedFiles.forEach(remainingPreviousFile => {
+        let params = {
+            uri: remainingPreviousFile,
+            diagnostics: [],
+        };
+        let notification = {
+            jsonrpc: c.jsonrpcVersion,
+            method: 'textDocument/publishDiagnostics',
+            params: params,
+        };
+        process_1.default.send(notification);
+    });
+    previouslyDiagnosedFiles = new Set(diagnosedFilePaths);
 };
-let startWatchingBsbOutputFile = (root, process) => {
-    // TOOD: setTimeout instead
-    let id = setInterval(() => {
-        let openFiles = Object.keys(stupidFileContentCache);
-        let bsbLogDirs = new Set();
-        openFiles.forEach(openFile => {
-            // TODO: remove this hack
-            let filePath = openFile.replace('file://', '');
-            let bsbLogDir = findDirOfFileNearFile(bsbLogPartialPath, filePath);
-            if (bsbLogDir != null) {
-                bsbLogDirs.add(bsbLogDir);
-            }
-        });
-        let files = {};
-        let res = Array.from(bsbLogDirs)
-            .forEach(bsbLogDir => {
-            let bsbLogPath = path.join(bsbLogDir, bsbLogPartialPath);
-            let content = fs_1.default.readFileSync(bsbLogPath, { encoding: 'utf-8' });
-            let filesAndErrors = parseBsbLogOutput(content);
-            Object.keys(filesAndErrors).forEach(file => {
-                // assumption: there's no existing files[file] entry
-                // this is true; see the lines above. A file can only belong to one bsb.log root
-                files[file] = filesAndErrors[file];
-            });
-        });
-        Object.keys(files).forEach(file => {
-            let params = {
-                uri: file,
-                // there's a new optional version param from https://github.com/microsoft/language-server-protocol/issues/201
-                // not using it for now, sigh
-                diagnostics: files[file],
-            };
-            let notification = {
-                jsonrpc: jsonrpcVersion,
-                method: 'textDocument/publishDiagnostics',
-                params: params,
-            };
-            process.send(notification);
-        });
-    }, 1000);
-    return id;
+let compilerLogsWatcher = chokidar.watch([])
+    .on('all', (_e, changedPath) => {
+    console.log('new log change', changedPath, Math.random());
+    sendUpdatedDiagnostics();
+});
+let addCompilerLogToWatch = (fileUri) => {
+    let filePath = vscode_uri_1.uriToFsPath(vscode_uri_1.URI.parse(fileUri), true);
+    let compilerLogDir = utils.findDirOfFileNearFile(c.compilerLogPartialPath, filePath);
+    if (compilerLogDir != null) {
+        let compilerLogPath = path.join(compilerLogDir, c.compilerLogPartialPath);
+        if (!compilerLogPaths.has(compilerLogPath)) {
+            console.log("added new ", compilerLogPath, "from file: ", compilerLogDir);
+            compilerLogPaths.add(compilerLogPath);
+            compilerLogsWatcher.add(compilerLogPath);
+            // no need to call sendUpdatedDiagnostics() here; the watcher add will
+            // call the listener which calls it
+        }
+    }
 };
-let stopWatchingBsbOutputFile = (timerId) => {
-    clearInterval(timerId);
+let removeCompilerLogToWatch = (fileUri) => {
+    let filePath = vscode_uri_1.uriToFsPath(vscode_uri_1.URI.parse(fileUri), true);
+    let compilerLogDir = utils.findDirOfFileNearFile(c.compilerLogPartialPath, filePath);
+    if (compilerLogDir != null) {
+        let compilerLogPath = path.join(compilerLogDir, c.compilerLogPartialPath);
+        if (compilerLogPaths.has(compilerLogPath)) {
+            console.log("remove log path ", compilerLogPath);
+            compilerLogPaths.delete(compilerLogPath);
+            compilerLogsWatcher.unwatch(compilerLogPath);
+            sendUpdatedDiagnostics();
+        }
+    }
+};
+let stopWatchingCompilerLog = () => {
+    compilerLogsWatcher.close();
 };
 process_1.default.on('message', (a) => {
     if (a.id == null) {
@@ -271,14 +142,16 @@ process_1.default.on('message', (a) => {
         else if (aa.method === vscode_languageserver_protocol_1.DidOpenTextDocumentNotification.method) {
             let params = aa.params;
             let extName = path.extname(params.textDocument.uri);
-            if (extName === resExt || extName === resiExt) {
+            if (extName === c.resExt || extName === c.resiExt) {
+                console.log("new file coming", params.textDocument.uri);
                 stupidFileContentCache[params.textDocument.uri] = params.textDocument.text;
+                addCompilerLogToWatch(params.textDocument.uri);
             }
         }
         else if (aa.method === vscode_languageserver_protocol_1.DidChangeTextDocumentNotification.method) {
             let params = aa.params;
             let extName = path.extname(params.textDocument.uri);
-            if (extName === resExt || extName === resiExt) {
+            if (extName === c.resExt || extName === c.resiExt) {
                 let changes = params.contentChanges;
                 if (changes.length === 0) {
                     // no change?
@@ -292,6 +165,7 @@ process_1.default.on('message', (a) => {
         else if (aa.method === vscode_languageserver_protocol_1.DidCloseTextDocumentNotification.method) {
             let params = aa.params;
             delete stupidFileContentCache[params.textDocument.uri];
+            removeCompilerLogToWatch(params.textDocument.uri);
         }
     }
     else {
@@ -299,7 +173,7 @@ process_1.default.on('message', (a) => {
         let aa = a;
         if (!initialized && aa.method !== 'initialize') {
             let response = {
-                jsonrpc: jsonrpcVersion,
+                jsonrpc: c.jsonrpcVersion,
                 id: aa.id,
                 error: {
                     code: m.ErrorCodes.ServerNotInitialized,
@@ -309,25 +183,17 @@ process_1.default.on('message', (a) => {
             process_1.default.send(response);
         }
         else if (aa.method === 'initialize') {
-            let param = aa.params;
-            let root = param.rootUri;
-            if (root == null) {
-                // TODO: handle single file
-                console.log("not handling single file");
-            }
-            else {
-                // diagnosisTimer = startWatchingBsbOutputFile(root, process)
-            }
+            // startWatchingCompilerLog(process)
             // send the list of things we support
             let result = {
                 capabilities: {
-                    // TODO: incremental sync
+                    // TODO: incremental sync?
                     textDocumentSync: v.TextDocumentSyncKind.Full,
                     documentFormattingProvider: true,
                 }
             };
             let response = {
-                jsonrpc: jsonrpcVersion,
+                jsonrpc: c.jsonrpcVersion,
                 id: aa.id,
                 result: result,
             };
@@ -337,7 +203,7 @@ process_1.default.on('message', (a) => {
         else if (aa.method === 'initialized') {
             // sent from client after initialize. Nothing to do for now
             let response = {
-                jsonrpc: jsonrpcVersion,
+                jsonrpc: c.jsonrpcVersion,
                 id: aa.id,
                 result: null,
             };
@@ -347,7 +213,7 @@ process_1.default.on('message', (a) => {
             // https://microsoft.github.io/language-server-protocol/specification#shutdown
             if (shutdownRequestAlreadyReceived) {
                 let response = {
-                    jsonrpc: jsonrpcVersion,
+                    jsonrpc: c.jsonrpcVersion,
                     id: aa.id,
                     error: {
                         code: m.ErrorCodes.InvalidRequest,
@@ -358,11 +224,10 @@ process_1.default.on('message', (a) => {
             }
             else {
                 shutdownRequestAlreadyReceived = true;
-                if (diagnosisTimer != null) {
-                    stopWatchingBsbOutputFile(diagnosisTimer);
-                }
+                // TODO: recheck logic around init/shutdown...
+                stopWatchingCompilerLog();
                 let response = {
-                    jsonrpc: jsonrpcVersion,
+                    jsonrpc: c.jsonrpcVersion,
                     id: aa.id,
                     result: null,
                 };
@@ -371,41 +236,36 @@ process_1.default.on('message', (a) => {
         }
         else if (aa.method === p.DocumentFormattingRequest.method) {
             let params = aa.params;
-            // TODO: remove this hack
-            let filePath = params.textDocument.uri.replace('file://', '');
+            let filePath = vscode_uri_1.uriToFsPath(vscode_uri_1.URI.parse(params.textDocument.uri), true);
             let extension = path.extname(params.textDocument.uri);
-            if (extension !== resExt && extension !== resiExt) {
+            if (extension !== c.resExt && extension !== c.resiExt) {
                 let response = {
-                    jsonrpc: jsonrpcVersion,
+                    jsonrpc: c.jsonrpcVersion,
                     id: aa.id,
                     error: {
                         code: m.ErrorCodes.InvalidRequest,
-                        message: `Not a ${resExt} or ${resiExt} file.`
+                        message: `Not a ${c.resExt} or ${c.resiExt} file.`
                     }
                 };
                 process_1.default.send(response);
             }
             else {
-                let nodeModulesParentPath = findDirOfFileNearFile(bscPartialPath, filePath);
+                let nodeModulesParentPath = utils.findDirOfFileNearFile(c.bscPartialPath, filePath);
                 if (nodeModulesParentPath == null) {
                     let response = {
-                        jsonrpc: jsonrpcVersion,
+                        jsonrpc: c.jsonrpcVersion,
                         id: aa.id,
                         error: {
                             code: m.ErrorCodes.InvalidRequest,
-                            message: `Cannot find a nearby ${bscPartialPath}. It's needed for formatting.`,
+                            message: `Cannot find a nearby ${c.bscPartialPath}. It's needed for formatting.`,
                         }
                     };
                     process_1.default.send(response);
                 }
                 else {
-                    // file to format potentially doesn't exist anymore because of races. But that's ok, the error from bsc should handle it
+                    // code will always be defined here, even though technically it can be undefined
                     let code = stupidFileContentCache[params.textDocument.uri];
-                    // TODO: error here?
-                    if (code === undefined) {
-                        console.log("wtf can't find file");
-                    }
-                    let formattedResult = formatUsingValidBscPath(code, path.join(nodeModulesParentPath, bscPartialPath), extension === resiExt);
+                    let formattedResult = utils.formatUsingValidBscPath(code, path.join(nodeModulesParentPath, c.bscPartialPath), extension === c.resiExt);
                     if (formattedResult.kind === 'success') {
                         let result = [{
                                 range: {
@@ -415,53 +275,55 @@ process_1.default.on('message', (a) => {
                                 newText: formattedResult.result,
                             }];
                         let response = {
-                            jsonrpc: jsonrpcVersion,
+                            jsonrpc: c.jsonrpcVersion,
                             id: aa.id,
                             result: result,
                         };
                         process_1.default.send(response);
-                        let params2 = {
-                            uri: params.textDocument.uri,
-                            // there's a new optional version param from https://github.com/microsoft/language-server-protocol/issues/201
-                            // not using it for now, sigh
-                            diagnostics: [],
-                        };
-                        let notification = {
-                            jsonrpc: jsonrpcVersion,
-                            method: 'textDocument/publishDiagnostics',
-                            params: params2,
-                        };
-                        process_1.default.send(notification);
+                        // TODO: make sure the diagnostic diffing takes this into account
+                        if (!utils.compilerLogPresentAndNotEmpty(filePath)) {
+                            let params2 = {
+                                uri: params.textDocument.uri,
+                                diagnostics: [],
+                            };
+                            let notification = {
+                                jsonrpc: c.jsonrpcVersion,
+                                method: 'textDocument/publishDiagnostics',
+                                params: params2,
+                            };
+                        }
                     }
                     else {
                         let response = {
-                            jsonrpc: jsonrpcVersion,
+                            jsonrpc: c.jsonrpcVersion,
                             id: aa.id,
                             result: [],
                         };
                         process_1.default.send(response);
-                        let filesAndErrors = parseBsbLogOutput(formattedResult.error);
-                        Object.keys(filesAndErrors).forEach(file => {
-                            let params2 = {
-                                uri: params.textDocument.uri,
-                                // there's a new optional version param from https://github.com/microsoft/language-server-protocol/issues/201
-                                // not using it for now, sigh
-                                diagnostics: filesAndErrors[file],
-                            };
-                            let notification = {
-                                jsonrpc: jsonrpcVersion,
-                                method: 'textDocument/publishDiagnostics',
-                                params: params2,
-                            };
-                            process_1.default.send(notification);
-                        });
+                        if (!utils.compilerLogPresentAndNotEmpty(filePath)) {
+                            let filesAndErrors = utils.parseCompilerLogOutput(formattedResult.error, ":");
+                            Object.keys(filesAndErrors).forEach(file => {
+                                let params2 = {
+                                    uri: params.textDocument.uri,
+                                    // there's a new optional version param from https://github.com/microsoft/language-server-protocol/issues/201
+                                    // not using it for now, sigh
+                                    diagnostics: filesAndErrors[file],
+                                };
+                                let notification = {
+                                    jsonrpc: c.jsonrpcVersion,
+                                    method: 'textDocument/publishDiagnostics',
+                                    params: params2,
+                                };
+                                process_1.default.send(notification);
+                            });
+                        }
                     }
                 }
             }
         }
         else {
             let response = {
-                jsonrpc: jsonrpcVersion,
+                jsonrpc: c.jsonrpcVersion,
                 id: aa.id,
                 error: {
                     code: m.ErrorCodes.InvalidRequest,
