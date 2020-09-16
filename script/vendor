@@ -2,7 +2,8 @@
 
 set -e
 
-[[ -d rescript-language-server ]] || git clone git@github.com:rescript-lang/rescript-language-server.git
+rm -rf rescript-language-server || true
+git clone git@github.com:rescript-lang/rescript-language-server.git
 
 rm -rf vendor || true
 mkdir -p vendor/server
@@ -16,3 +17,7 @@ cp package-lock.json ../vendor/
 cp server/package.json ../vendor/server/
 cp server/package-lock.json ../vendor/server/
 cp server/out/server.js ../vendor/server/
+cp server/out/constants.js ../vendor/server/
+cp server/out/utils.js ../vendor/server/
+cd ..
+npm run postinstall
