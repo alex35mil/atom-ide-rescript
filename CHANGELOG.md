@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.0
+- Sync language server with upstream master
+
 ## 0.0.3
 - Sync language server with upstream master: diagnostics! (requires `bs-platform` master)
 
