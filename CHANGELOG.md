@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.1
+- Un-gitignore rescript-editor-support binaries
+
 ## 1.0.0
 - Sync language server with upstream master
 
