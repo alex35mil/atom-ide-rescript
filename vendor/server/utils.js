@@ -22,18 +22,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseCompilerLogOutput = exports.parseDiagnosticLocation = exports.formatUsingValidBscPath = exports.compilerLogPresentAndNotEmpty = exports.findDirOfFileNearFile = void 0;
+exports.parseCompilerLogOutput = exports.parseDiagnosticLocation = exports.runBsbWatcherUsingValidBsbPath = exports.formatUsingValidBscPath = exports.findBscExeDirOfFile = exports.findProjectRootOfFile = exports.createFileInTempDir = void 0;
 const c = __importStar(require("./constants"));
 const childProcess = __importStar(require("child_process"));
 const path = __importStar(require("path"));
 const t = __importStar(require("vscode-languageserver-types"));
-const tmp = __importStar(require("tmp"));
 const fs_1 = __importDefault(require("fs"));
-// TODO: races here
+const os = __importStar(require("os"));
+let tempFilePrefix = "rescript_format_file_" + process.pid + "_";
+let tempFileId = 0;
+exports.createFileInTempDir = (extension = "") => {
+    let tempFileName = tempFilePrefix + tempFileId + extension;
+    tempFileId = tempFileId + 1;
+    return path.join(os.tmpdir(), tempFileName);
+};
+// TODO: races here?
 // TODO: this doesn't handle file:/// scheme
-exports.findDirOfFileNearFile = (fileToFind, source) => {
+exports.findProjectRootOfFile = (source) => {
     let dir = path.dirname(source);
-    if (fs_1.default.existsSync(path.join(dir, fileToFind))) {
+    if (fs_1.default.existsSync(path.join(dir, c.bsconfigPartialPath))) {
         return dir;
     }
     else {
@@ -42,39 +49,76 @@ exports.findDirOfFileNearFile = (fileToFind, source) => {
             return null;
         }
         else {
-            return exports.findDirOfFileNearFile(fileToFind, dir);
+            return exports.findProjectRootOfFile(dir);
         }
     }
 };
-exports.compilerLogPresentAndNotEmpty = (filePath) => {
-    let compilerLogDir = exports.findDirOfFileNearFile(c.compilerLogPartialPath, filePath);
-    if (compilerLogDir == null) {
-        return false;
+// TODO: races here?
+// TODO: this doesn't handle file:/// scheme
+// We need to recursively search for bs-platform/{platform}/bsc.exe upward from
+// the project's root, because in some setups, such as yarn workspace/monorepo,
+// the node_modules/bs-platform package might be hoisted up instead of alongside
+// the project root.
+// Also, if someone's ever formatting a regular project setup's dependency
+// (which is weird but whatever), they'll at least find an upward bs-platform
+// from the dependent.
+exports.findBscExeDirOfFile = (source) => {
+    let dir = path.dirname(source);
+    let bscPath = path.join(dir, c.bscExePartialPath);
+    if (fs_1.default.existsSync(bscPath)) {
+        return dir;
     }
     else {
-        let compilerLogPath = path.join(compilerLogDir, c.compilerLogPartialPath);
-        return fs_1.default.statSync(compilerLogPath).size > 0;
+        if (dir === source) {
+            // reached the top
+            return null;
+        }
+        else {
+            return exports.findBscExeDirOfFile(dir);
+        }
     }
 };
 exports.formatUsingValidBscPath = (code, bscPath, isInterface) => {
-    // library cleans up after itself. No need to manually remove temp file
-    let tmpobj = tmp.fileSync();
     let extension = isInterface ? c.resiExt : c.resExt;
-    let fileToFormat = tmpobj.name + extension;
-    fs_1.default.writeFileSync(fileToFormat, code, { encoding: 'utf-8' });
+    let formatTempFileFullPath = exports.createFileInTempDir(extension);
+    fs_1.default.writeFileSync(formatTempFileFullPath, code, {
+        encoding: "utf-8",
+    });
     try {
-        let result = childProcess.execFileSync(bscPath, ['-color', 'never', '-format', fileToFormat], { stdio: 'pipe' });
+        let result = childProcess.execFileSync(bscPath, ["-color", "never", "-format", formatTempFileFullPath], { stdio: "pipe" });
         return {
-            kind: 'success',
+            kind: "success",
             result: result.toString(),
         };
     }
     catch (e) {
         return {
-            kind: 'error',
+            kind: "error",
             error: e.message,
         };
     }
+    finally {
+        // async close is fine. We don't use this file name again
+        fs_1.default.unlink(formatTempFileFullPath, () => null);
+    }
+};
+exports.runBsbWatcherUsingValidBsbPath = (bsbPath, projectRootPath) => {
+    let process = childProcess.execFile(bsbPath, ["-w"], {
+        cwd: projectRootPath,
+    });
+    return process;
+    // try {
+    // 	let result = childProcess.execFileSync(bsbPath, [], { stdio: 'pipe', cwd: projectRootPath })
+    // 	return {
+    // 		kind: 'success',
+    // 		result: result.toString(),
+    // 	}
+    // } catch (e) {
+    // 	return {
+    // 		kind: 'error',
+    // 		error: e.message,
+    // 	}
+    // }
 };
 exports.parseDiagnosticLocation = (location) => {
     // example output location:
@@ -83,19 +127,22 @@ exports.parseDiagnosticLocation = (location) => {
     // 3:9-6:1
     // language-server position is 0-based. Ours is 1-based. Don't forget to convert
     // also, our end character is inclusive. Language-server's is exclusive
-    let isRange = location.indexOf('-') >= 0;
+    let isRange = location.indexOf("-") >= 0;
     if (isRange) {
-        let [from, to] = location.split('-');
-        let [fromLine, fromChar] = from.split(':');
-        let isSingleLine = to.indexOf(':') >= 0;
-        let [toLine, toChar] = isSingleLine ? to.split(':') : [fromLine, to];
+        let [from, to] = location.split("-");
+        let [fromLine, fromChar] = from.split(":");
+        let isSingleLine = to.indexOf(":") >= 0;
+        let [toLine, toChar] = isSingleLine ? to.split(":") : [fromLine, to];
         return {
-            start: { line: parseInt(fromLine) - 1, character: parseInt(fromChar) - 1 },
+            start: {
+                line: parseInt(fromLine) - 1,
+                character: parseInt(fromChar) - 1,
+            },
             end: { line: parseInt(toLine) - 1, character: parseInt(toChar) },
         };
     }
     else {
-        let [line, char] = location.split(':');
+        let [line, char] = location.split(":");
         let start = { line: parseInt(line) - 1, character: parseInt(char) };
         return {
             start: start,
@@ -103,8 +150,10 @@ exports.parseDiagnosticLocation = (location) => {
         };
     }
 };
-exports.parseCompilerLogOutput = (content, separator) => {
+exports.parseCompilerLogOutput = (content) => {
     /* example .compiler.log file content that we're gonna parse:
+
+#Start(1600519680823)
 
     Syntax error!
     /Users/chenglou/github/reason-react/src/test.res:1:8-2:3
@@ -136,26 +185,26 @@ exports.parseCompilerLogOutput = (content, separator) => {
     2 │ let b = "hi"
     3 │ let a = b + 1
 
-    This has type:
-        string
+    This has type: string
+    Somewhere wanted: int
 
-    But somewhere wanted:
-        int
+#Done(1600519680836)
     */
     let parsedDiagnostics = [];
-    let lines = content.split('\n');
+    let lines = content.split("\n");
+    let done = false;
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
-        if (line.startsWith('  We\'ve found a bug for you!')) {
+        if (line.startsWith("  We've found a bug for you!")) {
             parsedDiagnostics.push({
                 code: undefined,
                 severity: t.DiagnosticSeverity.Error,
                 tag: undefined,
-                content: []
+                content: [],
             });
         }
-        else if (line.startsWith('  Warning number ')) {
-            let warningNumber = parseInt(line.slice('  Warning number '.length));
+        else if (line.startsWith("  Warning number ")) {
+            let warningNumber = parseInt(line.slice("  Warning number ".length));
             let tag = undefined;
             switch (warningNumber) {
                 case 11:
@@ -184,43 +233,45 @@ exports.parseCompilerLogOutput = (content, separator) => {
                 code: Number.isNaN(warningNumber) ? undefined : warningNumber,
                 severity: t.DiagnosticSeverity.Warning,
                 tag: tag,
-                content: []
+                content: [],
             });
         }
-        else if (line.startsWith('  Syntax error!')) {
+        else if (line.startsWith("  Syntax error!")) {
             parsedDiagnostics.push({
                 code: undefined,
                 severity: t.DiagnosticSeverity.Error,
                 tag: undefined,
-                content: []
+                content: [],
             });
+        }
+        else if (line.startsWith("#Done(")) {
+            done = true;
         }
         else if (/^  +[0-9]+ /.test(line)) {
             // code display. Swallow
         }
-        else if (line.startsWith('  ')) {
+        else if (line.startsWith("  ")) {
             parsedDiagnostics[parsedDiagnostics.length - 1].content.push(line);
         }
     }
-    // map of file path to list of diagnostic
-    let ret = {};
-    parsedDiagnostics.forEach(parsedDiagnostic => {
+    let result = {};
+    parsedDiagnostics.forEach((parsedDiagnostic) => {
         let [fileAndLocation, ...diagnosticMessage] = parsedDiagnostic.content;
-        let locationSeparator = fileAndLocation.indexOf(separator);
+        let locationSeparator = fileAndLocation.indexOf(":");
         let file = fileAndLocation.substring(2, locationSeparator);
         let location = fileAndLocation.substring(locationSeparator + 1);
-        if (ret[file] == null) {
-            ret[file] = [];
+        if (result[file] == null) {
+            result[file] = [];
         }
         let cleanedUpDiagnostic = diagnosticMessage
-            .map(line => {
+            .map((line) => {
             // remove the spaces in front
             return line.slice(2);
         })
-            .join('\n')
+            .join("\n")
             // remove start and end whitespaces/newlines
-            .trim() + '\n';
-        ret[file].push({
+            .trim() + "\n";
+        result[file].push({
             severity: parsedDiagnostic.severity,
             tags: parsedDiagnostic.tag === undefined ? [] : [parsedDiagnostic.tag],
             code: parsedDiagnostic.code,
@@ -229,7 +280,6 @@ exports.parseCompilerLogOutput = (content, separator) => {
             message: cleanedUpDiagnostic,
         });
     });
-    console.log(ret, '=========');
-    return ret;
+    return { done, result };
 };
 //# sourceMappingURL=utils.js.map

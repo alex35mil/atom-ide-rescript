@@ -7,6 +7,9 @@ git clone git@github.com:rescript-lang/rescript-language-server.git
 
 rm -rf vendor || true
 mkdir -p vendor/server
+mkdir -p vendor/darwin
+mkdir -p vendor/linux
+mkdir -p vendor/win32
 
 cd rescript-language-server
 rm -rf server/out || true
@@ -19,5 +22,9 @@ cp server/package-lock.json ../vendor/server/
 cp server/out/server.js ../vendor/server/
 cp server/out/constants.js ../vendor/server/
 cp server/out/utils.js ../vendor/server/
+cp server/out/RescriptEditorSupport.js ../vendor/server/
+cp server/darwin/rescript-editor-support.exe ../vendor/darwin/
+cp server/linux/rescript-editor-support.exe ../vendor/linux/
+cp server/win32/rescript-editor-support.exe ../vendor/win32/
 cd ..
 npm run postinstall

@@ -3,14 +3,19 @@
 	"description": "The official VSCode plugin for ReScript.",
 	"author": "chenglou",
 	"license": "MIT",
-	"version": "0.0.8",
+	"version": "1.0.4",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/rescript-lang/rescript-vscode"
 	},
 	"publisher": "chenglou92",
 	"icon": "logo.png",
-	"categories": [],
+	"categories": [
+		"Programming Languages",
+		"Snippets",
+		"Linters",
+		"Formatters"
+	],
 	"keywords": [
 		"rescript",
 		"language-server"
@@ -23,6 +28,18 @@
 	],
 	"main": "./client/out/extension",
 	"contributes": {
+		"jsonValidation": [
+			{
+				"fileMatch": "bsconfig.json",
+				"url": "https://raw.githubusercontent.com/rescript-lang/rescript-compiler/master/docs/docson/build-schema.json"
+			}
+		],
+		"snippets": [
+			{
+				"language": "rescript",
+				"path": "./snippets.json"
+			}
+		],
 		"taskDefinitions_unused": [
 			{
 				"type": "bsb",
@@ -39,7 +56,7 @@
 		],
 		"configuration": {
 			"type": "object",
-			"title": "Example configuration",
+			"title": "ReScript",
 			"properties": {
 				"languageServerExample.maxNumberOfProblems": {
 					"scope": "resource",
@@ -90,16 +107,13 @@
 	},
 	"devDependencies": {
 		"@types/mocha": "^7.0.2",
-		"mocha": "^8.0.1",
 		"@types/node": "^12.12.0",
-		"eslint": "^6.4.0",
 		"@typescript-eslint/parser": "^2.3.0",
+		"eslint": "^6.4.0",
+		"mocha": "^8.0.1",
 		"typescript": "^3.9.4"
 	},
 	"dependencies": {
-		"@types/tmp": "^0.2.0",
-		"chokidar": "^3.4.2",
-		"tmp": "^0.2.1",
-		"vscode-uri": "^2.1.2"
+		"chokidar": "^3.4.2"
 	}
 }
