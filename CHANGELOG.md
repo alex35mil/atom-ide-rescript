@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.4
+- Fix vendor deps.
+
 ## 1.1.3
 - Fix gitignore.
 
