@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.3
+- Fix gitignore.
+
 ## 1.1.2
 - Fix postinstall script?
 
