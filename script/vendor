@@ -16,6 +16,10 @@ mkdir -p $DEST_DIR
 mkdir $TMP_DIR \
 && wget -q --show-progress --output-document=$TMP_DIR/$VSCODE_EXT https://github.com/rescript-lang/rescript-vscode/releases/download/$VERSION/$VSCODE_EXT \
 && tar -xf $TMP_DIR/$VSCODE_EXT -C $TMP_DIR \
-&& cp -R $TMP_DIR/extension/node_modules $DEST_DIR/ \
+&& cp -R $TMP_DIR/extension/package.json $DEST_DIR/ \
 && cp -R $TMP_DIR/extension/server $DEST_DIR/ \
+&& rm -rf $DEST_DIR/server/node_modules \
 && rm -rf $TMP_DIR
+
+# uncomment to test postinstall
+# cd vendor && npm install --only=prod --ignore-scripts && cd server && npm install --only=prod
