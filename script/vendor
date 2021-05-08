@@ -2,29 +2,20 @@
 
 set -e
 
-rm -rf rescript-language-server || true
-git clone git@github.com:rescript-lang/rescript-language-server.git
+VERSION="1.1.1"
 
-rm -rf vendor || true
-mkdir -p vendor/server
-mkdir -p vendor/darwin
-mkdir -p vendor/linux
-mkdir -p vendor/win32
+TMP_DIR="_tmp"
+DEST_DIR="vendor"
+VSCODE_EXT="rescript-vscode-$VERSION.vsix"
 
-cd rescript-language-server
-rm -rf server/out || true
-npm install
-npm run compile
-cp package.json ../vendor/
-cp package-lock.json ../vendor/
-cp server/package.json ../vendor/server/
-cp server/package-lock.json ../vendor/server/
-cp server/out/server.js ../vendor/server/
-cp server/out/constants.js ../vendor/server/
-cp server/out/utils.js ../vendor/server/
-cp server/out/RescriptEditorSupport.js ../vendor/server/
-cp server/darwin/rescript-editor-support.exe ../vendor/darwin/
-cp server/linux/rescript-editor-support.exe ../vendor/linux/
-cp server/win32/rescript-editor-support.exe ../vendor/win32/
-cd ..
-npm run postinstall
+rm -rf $TMP_DIR || true
+rm -rf $DEST_DIR || true
+
+mkdir -p $DEST_DIR
+
+mkdir $TMP_DIR \
+&& wget -q --show-progress --output-document=$TMP_DIR/$VSCODE_EXT https://github.com/rescript-lang/rescript-vscode/releases/download/$VERSION/$VSCODE_EXT \
+&& tar -xf $TMP_DIR/$VSCODE_EXT -C $TMP_DIR \
+&& cp -R $TMP_DIR/extension/node_modules $DEST_DIR/ \
+&& cp -R $TMP_DIR/extension/server $DEST_DIR/ \
+&& rm -rf $TMP_DIR
