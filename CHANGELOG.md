@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.2
+- Fix postinstall script?
+
 ## 1.1.1
 - Fix postinstall script.
 

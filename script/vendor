@@ -21,5 +21,5 @@ mkdir $TMP_DIR \
 && rm -rf $DEST_DIR/server/node_modules \
 && rm -rf $TMP_DIR
 
-# uncomment to test postinstall
-# cd vendor && npm install --only=prod --ignore-scripts && cd server && npm install --only=prod
+# postinstall
+cd vendor && npm install --only=prod --ignore-scripts && cd server && npm install --only=prod
