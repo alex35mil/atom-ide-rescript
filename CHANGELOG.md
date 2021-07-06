@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.5
+- Sync language server with upstream `v1.1.2`.
+
 ## 1.1.4
 - Fix vendor deps.
 

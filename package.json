@@ -4,13 +4,13 @@
   "description": "ReScript language support in Atom IDE",
   "repository": "https://github.com/alexfedoseev/atom-ide-rescript",
   "authors": [
-    "Alex Fedoseev <alex.fedoseev@gmail.com>"
+    "Alex Fedoseev <alex@fedoseev.mx>"
   ],
   "license": "MIT",
   "main": "lib/main.js",
   "scripts": {
     "vendor": "script/vendor",
-    "postinstall": "cd vendor && npm install --only=prod --ignore-scripts && cd server && npm install --only=prod"
+    "postinstall": "cd vendor/server && npm install --only=prod"
   },
   "engines": {
     "atom": ">=1.33.0"
